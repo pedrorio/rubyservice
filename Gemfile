@@ -12,6 +12,7 @@ gem 'rubocop'
 gem 'simplecov'
 gem 'simplecov-console'
 gem 'yard'
+gem 'yardstick'
 
 gem 'overcommit'
 

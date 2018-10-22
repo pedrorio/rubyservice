@@ -9,8 +9,7 @@ rubocop
 ```
 ##### Docs
 ```
-yard doc
-yard server
+yard doc && yard server
 ```
 ##### Tests
 ```
