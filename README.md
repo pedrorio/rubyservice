@@ -1,4 +1,3 @@
-## On The Beach Code Challenge
 ##### Installation
 ```
 bundle install
