@@ -10,8 +10,16 @@ module OTB
     option :string_of_jobs
 
     # the JobsParser Validation Schema
-    Schema = Dry::Validation.Schema do
-      required(:string_of_jobs) { str? & empty? | format?(/(\w) => (\w|)/) }
+    Schema = Dry::Validation.Contract do
+      params do
+        required(:string_of_jobs).value(:string)
+      end
+
+      rule(:string_of_jobs) do
+        next if value.empty? || value.match?(/(\w) => (\w|)/)
+
+        key.failure('must be empty or is in invalid format')
+      end
     end
 
     # Creates a new instance of the JobsParser with the param transformed as an hash

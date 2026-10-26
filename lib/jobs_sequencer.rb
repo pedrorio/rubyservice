@@ -22,8 +22,10 @@ module OTB
     permissible_errors [SelfDependencyError, CircularReferenceError]
 
     # the JobsSequencer Validation Schema
-    Schema = Dry::Validation.Schema do
-      required(:jobs_hash) { hash? }
+    Schema = Dry::Validation.Contract do
+      params do
+        required(:jobs_hash).value(:hash)
+      end
     end
 
     # Parses a valid hash of jobs into a string

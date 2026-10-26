@@ -1,11 +1,12 @@
 AllCops:
   Exclude:
-  - 'spec/**/*'
-  - 'bin/*'
-  TargetRubyVersion: 2.5.1
+    - 'spec/**/*'
+    - 'bin/*'
+  NewCops: disable
+  TargetRubyVersion: 4.0
 
-Metrics/LineLength:
+Layout/LineLength:
   Max: 120
 
-FrozenStringLiteralComment:
+Style/FrozenStringLiteralComment:
   Enabled: false

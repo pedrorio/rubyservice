@@ -2,7 +2,7 @@
 
 require 'dry-initializer'
 require 'dry-validation'
-require 'dry/monads/result'
+require 'dry/monads'
 require 'dry/core'
 
 # This class represents a service that validate inputs, standardises outputs and handles permissible errors
@@ -20,13 +20,14 @@ class Service
   # @api private
   # @param args
   # @return [Dry::Monads::Result::Failure, Service.new(args).call]
-  def self.call(args)
-    validation = self::Schema.call(args)
-    return Failure.new(validation.errors) unless validation.success?
+  def self.call(args = nil, **kwargs)
+    input = kwargs.empty? ? args : kwargs
+    validation = self::Schema.call(input)
+    return Failure.new(validation.errors.to_h) unless validation.success?
 
-    new(args).call
-  rescue StandardError => error
-    handle_error(error)
+    new(**input).call
+  rescue StandardError => e
+    handle_error(e)
   end
 
   # Processes errors into non permissible errors or failures with permissible errors
