@@ -1,7 +1,11 @@
 AllCops:
   Exclude:
-    - 'spec/**/*'
     - 'bin/*'
+    - 'spec/**/*'
+    - 'vendor/**/*'
+    - 'node_modules/**/*'
+    - 'tmp/**/*'
+    - '.git/**/*'
   NewCops: disable
   TargetRubyVersion: 4.0
 
