@@ -9,6 +9,9 @@ module OTB
     # @attr_reader [String] string_of_jobs the string of jobs
     option :string_of_jobs
 
+    # One job line: a word character, spaces around =>, and an optional dependency.
+    PAIR_LINE = /\A(\w) => (\w)?\z/
+
     # the JobsParser Validation Schema
     Schema = Dry::Validation.Contract do
       params do
@@ -16,9 +19,16 @@ module OTB
       end
 
       rule(:string_of_jobs) do
-        next if value.empty? || value.match?(/(\w) => (\w|)/)
+        next if value.empty?
 
-        key.failure('must be empty or is in invalid format')
+        lines = value.split("\n")
+        unless lines.any? && lines.all? { |line| line.match?(OTB::JobsParser::PAIR_LINE) }
+          key.failure('must be empty or is in invalid format')
+          next
+        end
+
+        names = lines.map { |line| line[0] }
+        key.failure('a job must be listed once') if names.uniq.length != names.length
       end
     end
 
@@ -27,8 +37,8 @@ module OTB
     # @param string_of_jobs [String] the string of jobs
     # @return [JobsParser.new(jobs: string_of_jobs).call, Dry::Monads::Result::Failure] the status object
     # @example
-    #   OTB::JobsParser.call('')  #=> Success('')
-    #   OTB::JobsParser.call('\'a\' => \'\'') #=> Success({ 'a' => ''})
+    #   OTB::JobsParser.call('') #=> Success({})
+    #   OTB::JobsParser.call("a => ") #=> Success({ 'a' => '' })
     #   OTB::JobsParser.call('Hello World') #=> Failure({:string_of_jobs=>["must be empty or is in invalid format"]})
     def self.call(string_of_jobs)
       args = { string_of_jobs: string_of_jobs }
@@ -49,8 +59,11 @@ module OTB
     # @api private
     # @return [Hash] the jobs hash
     def parse
-      string_of_jobs.scan(/(\w) => (\w|)/).each_with_object({}) do |pair, jobs_hash|
-        jobs_hash[pair.first] = pair.last
+      return {} if string_of_jobs.empty?
+
+      string_of_jobs.split("\n").each_with_object({}) do |line, jobs_hash|
+        job, dependency = line.match(PAIR_LINE).captures
+        jobs_hash[job] = dependency || ''
       end
     end
   end

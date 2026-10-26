@@ -9,13 +9,13 @@ module OTB
     # This class represents an error where there is a job that has itself as a dependency
     class SelfDependencyError < StandardError
       # the SelfDependencyError message
-      MESSAGE = 'A list of jobs cannot have a job that has itself as a dependency'
+      MESSAGE = 'Jobs can’t depend on themselves'
     end
 
     # This class represents an error where the list of jobs has a circular dependency
     class CircularReferenceError < StandardError
       # the CircularReferenceError message
-      MESSAGE = 'A list of jobs cannot have circular references'
+      MESSAGE = 'Jobs can’t have circular dependencies'
     end
 
     option :jobs_hash
@@ -32,72 +32,112 @@ module OTB
     # @api private
     # @return [Dry::Monads::Result::Mixin] the status class with a string_of_jobs or a permissible error
     # @example
-    #   OTB::JobsSequencer.call({'a' => ''}) #=> 'a'
-    #   OTB::JobsSequencer.call({'a' => 'b', 'b' => 'c'}) 'cba'
-    #   OTB::JobsSequencer.call({'a' => '', 'b' => 'c'}) #=> 'acb'
+    #   OTB::JobsSequencer.call(jobs_hash: { 'a' => '' }).success #=> "a"
+    #   OTB::JobsSequencer.call(jobs_hash: { 'a' => 'b', 'b' => 'c' }).success #=> "cba"
+    #   OTB::JobsSequencer.call(jobs_hash: { 'a' => '', 'b' => 'c', 'c' => '' }).success #=> "acb"
     def call
-      output = sequence
-      Success.new(output)
+      Success.new(sequence)
     end
 
     private
 
-    # Creates a new sequenced string of jobs
+    # Orders jobs so each dependency comes first.
     # @api private
     # @return [String] the sequenced string of jobs
     def sequence
-      output = jobs_hash.inject([]) do |list_of_jobs, (job, job_dependency)|
-        errors?(job: job,
-                job_dependency: job_dependency)
+      reject_self_dependencies
+      ordered = topological_order
+      raise CircularReferenceError, CircularReferenceError::MESSAGE if ordered.nil?
 
-        if (job_index = list_of_jobs.find_index(job))
-          list_of_jobs.insert(job_index, job_dependency)
-        else
-          job_dependency.empty? ? list_of_jobs << job : list_of_jobs.concat([job_dependency, job])
-        end
-      end
-
-      output.uniq.join
+      ordered.join
     end
 
-    # Verifies if the service has any permissible errors
     # @api private
-    # @param [String] job key in the jobs hash
-    # @param [String] job_dependency value in the jobs hash
-    # @return [SelfDependencyError, CircularReferenceError, void]
-    def errors?(job:, job_dependency:)
-      self_dependency?(job: job,
-                       job_dependency: job_dependency)
-
-      circular_dependency?(job: job,
-                           job_dependency: job_dependency,
-                           selected_job_dependency: job_dependency)
-    end
-
-    # Verifies if the jobs_hash has circular references
-    # @api private
-    # @param [String] job the key in the hash
-    # @param [String] job_dependency the value in the hash
-    # @param [String] selected_job_dependency the value in the hash to compare the key value pairs
-    # @return [CircularReferenceError, void]
-    def circular_dependency?(job:, job_dependency:, selected_job_dependency:)
-      if (parent_job_dependency = jobs_hash[selected_job_dependency])
-        job_pair = [job, job_dependency]
-        raise CircularReferenceError, CircularReferenceError::MESSAGE if job_pair.include?(parent_job_dependency)
-
-        circular_dependency?(job: job, job_dependency: job_dependency, selected_job_dependency: parent_job_dependency)
-      else
-        false
+    # @return [void]
+    def reject_self_dependencies
+      jobs_hash.each do |job, dependency|
+        raise SelfDependencyError, SelfDependencyError::MESSAGE if dependency == job
       end
     end
 
-    # Verifies if the jobs_hash has self dependencies
+    # Hash keys in insertion order, then dependencies that were never listed as jobs.
     # @api private
-    # @param [String] job the key in the jobs hash
-    # @param [String] job_dependency the value in the jobs hash
-    # @return [SelfDependencyError, void]
-    def self_dependency?(job:, job_dependency:)
-      raise SelfDependencyError, SelfDependencyError::MESSAGE if job_dependency == job
+    # @return [Array<String>]
+    def node_names
+      seen = {}
+      ordered = []
+      jobs_hash.each_key { |job| append_node(ordered, seen, job) }
+      jobs_hash.each_value do |dependency|
+        next if dependency.empty?
+
+        append_node(ordered, seen, dependency)
+      end
+      ordered
+    end
+
+    # @api private
+    # @param ordered [Array]
+    # @param seen [Hash]
+    # @param name [String]
+    # @return [void]
+    def append_node(ordered, seen, name)
+      return if seen[name]
+
+      seen[name] = true
+      ordered << name
+    end
+
+    # Stable FIFO order. Returns nil when a cycle leaves some jobs unscheduled.
+    # @api private
+    # @return [Array, nil]
+    def topological_order
+      ordered_nodes = node_names
+      indegree = ordered_nodes.to_h { |name| [name, 0] }
+      dependents = dependency_edges(indegree)
+      queue = ordered_nodes.select { |name| indegree[name].zero? }
+      result = drain(queue, indegree, dependents)
+      return nil if result.size < ordered_nodes.size
+
+      result
+    end
+
+    # @api private
+    # @param indegree [Hash]
+    # @return [Hash]
+    def dependency_edges(indegree)
+      jobs_hash.each_with_object({}) do |(job, dependency), dependents|
+        next if dependency.empty?
+
+        (dependents[dependency] ||= []) << job
+        indegree[job] += 1
+      end
+    end
+
+    # @api private
+    # @param queue [Array]
+    # @param indegree [Hash]
+    # @param dependents [Hash]
+    # @return [Array]
+    def drain(queue, indegree, dependents)
+      result = []
+      until queue.empty?
+        name = queue.shift
+        result << name
+        release(dependents[name], indegree, queue)
+      end
+      result
+    end
+
+    # @api private
+    # @param names [Array, nil]
+    # @param indegree [Hash]
+    # @param queue [Array]
+    # @return [void]
+    def release(names, indegree, queue)
+      (names || []).each do |dependent|
+        indegree[dependent] -= 1
+        queue << dependent if indegree[dependent].zero?
+      end
     end
   end
 end

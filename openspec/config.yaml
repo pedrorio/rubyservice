@@ -3,13 +3,14 @@ schema: spec-driven
 context: |
   Ruby library that orders single-character jobs, each with at most one dependency.
   Entry points: OTB::JobsParser.call(string) and OTB::JobsSequencer.call(jobs_hash: hash).
-  Both return a Dry::Monads Success or Failure. Keep those results, the error classes, and the error messages unless a change spec says otherwise.
-  A job is one word character. The parser extracts pairs shaped like "a =>" or "a => b" (spaces around =>). An empty string is an empty job list. A repeated job keeps the last dependency. Text outside a pair is ignored.
-  The sequencer walks the hash in insertion order and builds the sequence by insertion. It is not a linear topological sort. Self-dependency and a dependency chain that returns to the job being checked, or to that job's direct dependency, are failures.
-  Ruby 4.0.9. RSpec specs are in spec/. RuboCop lints lib/ only (spec/ and bin/ are excluded).
+  Both return a Dry::Monads Success or Failure. Keep those results and the error classes unless a change spec says otherwise.
+  A job is one word character. A job list is an empty string or one pair per line, separated by newline characters. A pair is a word character, a space, =>, a space, and either one word character or nothing. A trailing newline is accepted. A repeated job fails with "a job must be listed once". Any other non-empty line fails with "must be empty or is in invalid format".
+  The sequencer is a stable FIFO topological order. Nodes are the hash keys in insertion order, then dependencies that are not keys, in the order those dependencies are first seen. Every non-empty dependency appears before the job that names it. Independent jobs stay in input order. {"a"=>"", "b"=>"c", "c"=>"f", "d"=>"a", "e"=>"b", "f"=>""} sequences to "afdcbe". {"d"=>"c", "b"=>"a", "c"=>"b", "a"=>""} sequences to "abcd". {"a"=>"b"} sequences to "ba".
+  A self-dependency is OTB::JobsSequencer::SelfDependencyError with message "Jobs can’t depend on themselves". Any cycle is OTB::JobsSequencer::CircularReferenceError with message "Jobs can’t have circular dependencies". Each job has at most one dependency, so ordering is O(n) time and O(n) extra space.
+  Ruby 4.0.9. RSpec specs are in spec/. RuboCop lints lib/ only (spec/, bin/, and vendor/ are excluded).
 
 rules:
   specs:
     - Write requirements with MUST or SHALL and testable WHEN/THEN scenarios.
-    - One behaviour per requirement. State only behaviour the parser and sequencer implement today.
-    - Do not require a topological order, or cycle detection, for inputs the code does not handle.
+    - One behaviour per requirement. State behaviour the parser and sequencer implement.
+    - A dependency requirement must place that dependency before the job that names it. A cycle requirement must fail every cycle, including one that does not return to the first job.

@@ -61,7 +61,7 @@ describe OTB::JobsSequencer do
     end
 
     it 'positions c before b' do
-      @output.should match(/c*b/)
+      @output.index('c').should be < @output.index('b')
     end
 
     it 'returns the same number of jobs' do
@@ -80,20 +80,24 @@ describe OTB::JobsSequencer do
       @output.size.should eq(6)
     end
 
-    it 'returns a string with afcbde' do
-      @output.should eq('afcbde')
+    it 'returns a string with afdcbe' do
+      @output.should eq('afdcbe')
     end
 
     it 'positions f before c' do
-      @output.should match(/f*c/)
+      @output.index('f').should be < @output.index('c')
+    end
+
+    it 'positions c before b' do
+      @output.index('c').should be < @output.index('b')
     end
 
     it 'positions b before e' do
-      @output.should match(/b*e/)
+      @output.index('b').should be < @output.index('e')
     end
 
     it 'positions a before d' do
-      @output.should match(/a*d/)
+      @output.index('a').should be < @output.index('d')
     end
   end
 
@@ -110,6 +114,7 @@ describe OTB::JobsSequencer do
 
     it 'returns an OTB::JobsSequencer::SelfDependencyError' do
       @output.failure.should be_an_instance_of(OTB::JobsSequencer::SelfDependencyError)
+      @output.failure.message.should eq('Jobs can’t depend on themselves')
     end
   end
 
@@ -126,7 +131,34 @@ describe OTB::JobsSequencer do
 
     it 'returns an OTB::JobsSequencer::CircularReferenceError' do
       @output.failure.should be_an_instance_of(OTB::JobsSequencer::CircularReferenceError)
+      @output.failure.message.should eq('Jobs can’t have circular dependencies')
     end
   end
-  
+
+  describe 'when a dependency is listed after the job that needs it' do
+    it 'returns abcd' do
+      jobs_hash = { 'd' => 'c', 'b' => 'a', 'c' => 'b', 'a' => '' }
+      output = OTB::JobsSequencer.call(jobs_hash: jobs_hash).success
+      output.should eq('abcd')
+    end
+  end
+
+  describe 'when a dependency was never listed as its own job' do
+    it 'returns ba' do
+      jobs_hash = { 'a' => 'b' }
+      output = OTB::JobsSequencer.call(jobs_hash: jobs_hash).success
+      output.should eq('ba')
+    end
+  end
+
+  describe 'when a cycle sits downstream of the first job ({ \'a\' => \'b\', \'b\' => \'c\', \'c\' => \'d\', \'d\' => \'c\' })' do
+    it 'returns a CircularReferenceError failure' do
+      jobs_hash = { 'a' => 'b', 'b' => 'c', 'c' => 'd', 'd' => 'c' }
+      output = OTB::JobsSequencer.call(jobs_hash: jobs_hash)
+      output.should be_an_instance_of(Dry::Monads::Result::Failure)
+      output.failure.should be_an_instance_of(OTB::JobsSequencer::CircularReferenceError)
+      output.failure.message.should eq('Jobs can’t have circular dependencies')
+    end
+  end
+
 end
